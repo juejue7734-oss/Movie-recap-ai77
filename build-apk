@@ -1,0 +1,112 @@
+name: Build Movie Recap AI APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+permissions:
+  contents: read
+
+env:
+  JAVA_VERSION: '17'
+  ANDROID_PLATFORM: '35'
+  ANDROID_BUILD_TOOLS: '35.0.0'
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  build-debug-apk:
+    name: Validate and build debug APK
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK ${{ env.JAVA_VERSION }}
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+          cache: gradle
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK Platform 35 and build tools
+        run: |
+          sdkmanager "platform-tools" "platforms;android-${ANDROID_PLATFORM}" "build-tools;${ANDROID_BUILD_TOOLS}"
+          yes | sdkmanager --licenses >/dev/null || true
+
+      - name: Make Gradle wrapper executable
+        run: chmod +x ./gradlew
+
+      - name: Set up Gradle using the project wrapper
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Validate Gradle project
+        run: ./gradlew --no-daemon --stacktrace tasks
+
+      - name: Run structural validation
+        run: ./validate_project.sh
+
+      - name: Build debug APK
+        run: ./gradlew --no-daemon --stacktrace :app:assembleDebug
+
+      - name: Upload debug APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: movie-recap-ai-debug-apk
+          path: app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+          retention-days: 14
+
+  build-release-apk:
+    name: Build optional release APK
+    runs-on: ubuntu-latest
+    # Set the repository variable RELEASE_SIGNING_CONFIGURED=true only after
+    # adding a real signing configuration and GitHub Actions secrets. No fake
+    # credentials are created by this workflow.
+    if: ${{ vars.RELEASE_SIGNING_CONFIGURED == 'true' }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK ${{ env.JAVA_VERSION }}
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+          cache: gradle
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK Platform 35 and build tools
+        run: |
+          sdkmanager "platform-tools" "platforms;android-${ANDROID_PLATFORM}" "build-tools;${ANDROID_BUILD_TOOLS}"
+          yes | sdkmanager --licenses >/dev/null || true
+
+      - name: Make Gradle wrapper executable
+        run: chmod +x ./gradlew
+
+      - name: Set up Gradle using the project wrapper
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Validate Gradle project
+        run: ./gradlew --no-daemon --stacktrace tasks
+
+      - name: Build release APK
+        run: ./gradlew --no-daemon --stacktrace :app:assembleRelease
+
+      - name: Upload release APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: movie-recap-ai-release-apk
+          path: app/build/outputs/apk/release/*.apk
+          if-no-files-found: error
+          retention-days: 14
